@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: BSD-3-Clause-Clear 
 
 #include "fastrpc_domains.h"
+#ifdef FASTRPC_USE_DSP_AIDL
+#include "fastrpc_dsp_service.h"
+#endif
 //#ifndef VERIFY_PRINT_ERROR
 //#define VERIFY_PRINT_ERROR
 //#endif // VERIFY_PRINT_ERROR
@@ -318,6 +321,7 @@ static int fastrpc_trace = 0;
 static uint32_t fastrpc_wake_lock_enable[NUM_DOMAINS_EXTEND] = {0};
 
 static int domain_init(int domain, int *dev);
+static int close_device_node(int domain_id, int dev);
 static void domain_deinit(int domain);
 static int close_device_node(int domain_id, int dev);
 extern int apps_mem_table_init(void);
@@ -361,10 +365,10 @@ void fastrpc_session_close(int domain, int dev) {
     return;
   if ((hlist[domain].dev == INVALID_DEVICE) &&
       (dev != INVALID_DEVICE)) {
-    close(dev);
+    close_device_node(domain, dev);
   } else if ((hlist[domain].dev != INVALID_DEVICE) &&
             (dev == INVALID_DEVICE)) {
-    close(hlist[domain].dev);
+    close_device_node(domain, hlist[domain].dev);
     hlist[domain].dev = INVALID_DEVICE;
   }
   return;
@@ -3354,6 +3358,12 @@ int open_device_node(int domain_id) {
   default:
     break;
   }
+#ifdef FASTRPC_USE_DSP_AIDL
+  if (dev < 0 && (errno == EACCES || errno == ENOENT)) {
+    // The DSP HAL V1 uses legacy domain IDs, not sysfs/public IDs.
+    dev = fastrpc_hal_open(domain);
+  }
+#endif
   if (dev < 0)
     FARF(ERROR,
          "Error 0x%x: %s failed for domain ID %d, sess ID %d secure dev : %s, "
@@ -3367,7 +3377,10 @@ int open_device_node(int domain_id) {
 
 static int close_device_node(int domain_id, int dev) {
   int nErr = 0;
-  nErr = close(dev);
+#ifdef FASTRPC_USE_DSP_AIDL
+  if (!fastrpc_hal_close(dev))
+#endif
+    nErr = close(dev);
   FARF(ALWAYS, "%s: closed dev %d on domain %d", __func__, dev, domain_id);
   return nErr;
 }
@@ -3830,7 +3843,7 @@ bail:
     file = NULL;
   }
   if (dev >= 0) {
-    close(dev);
+    close_device_node(domain, dev);
   }
   if (fh != -1) {
     apps_std_fclose(fh);
@@ -4103,6 +4116,9 @@ static void fastrpc_apps_user_deinit(void) {
   PL_DEINIT(rpcmem);
   PL_DEINIT(gpls);
 
+#ifdef FASTRPC_USE_DSP_AIDL
+  fastrpc_hal_deinit();
+#endif
   FARF(ALWAYS, "%s done\n", __func__);
   return;
 }

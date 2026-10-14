@@ -109,13 +109,19 @@ soong_config_module_type {
     name: "fastrpc_backend_defaults",
     module_type: "cc_defaults",
     config_namespace: "fastrpc",
-    bool_variables: ["multimode"],
-    properties: ["cflags"],
+    bool_variables: ["multimode", "dsp_aidl"],
+    properties: ["cflags", "srcs", "static_libs", "shared_libs"],
 }
 
 fastrpc_backend_defaults {
     name: "fastrpc_selected_backend",
     soong_config_variables: {
+        dsp_aidl: {
+            cflags: ["-DFASTRPC_USE_DSP_AIDL"],
+            srcs: ["src/fastrpc_dsp_service.cpp"],
+            static_libs: ["fastrpc-dsp-client-ndk"],
+            shared_libs: ["libbinder_ndk", "android.hardware.common-V2-ndk"],
+        },
         multimode: {
             cflags: ["-DFASTRPC_USE_MULTIMODE"],
         },
@@ -286,4 +292,14 @@ sh_binary {
     src: "src/init.cdsprpcd.softsku.sh",
     vendor: true,
     filename: "init.cdsprpcd.softsku.sh",
+}
+// Private client bindings; symbols remain hidden by the FastRPC export map.
+aidl_interface {
+    name: "fastrpc-dsp-client",
+    vendor_available: true,
+    unstable: true,
+    srcs: ["aidl/vendor/qti/hardware/dsp/*.aidl"],
+    local_include_dir: "aidl",
+    imports: ["android.hardware.common-V2"],
+    backend: { java: { enabled: false }, cpp: { enabled: false }, ndk: { enabled: true } },
 }
