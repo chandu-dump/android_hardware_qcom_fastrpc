@@ -63,7 +63,8 @@ static inline fastrpc_context *fastrpc_context_validate(uint64_t ctxid) {
  */
 static int fastrpc_context_init_domains(fastrpc_context_create *create,
 	fastrpc_context *ctx) {
-	int nErr = AEE_SUCCESS, i = 0, j = 0;
+	int nErr = AEE_SUCCESS;
+	unsigned int i = 0, j = 0;
 	unsigned int effec_domain_id = 0, num_domain_ids = create->num_domain_ids;
 	unsigned int *domain_ids = ctx->domains;
 	bool multisess = true, multidom = true;

@@ -116,7 +116,7 @@ static __inline void sbuf_write(struct sbuf* buf, void *psrc, int srcLen) {
       }
       writeLen = STD_MIN(srcLen, sbuf_left(buf));
       if(writeLen > 0) {
-         memmove((void*)buf->bufCur, (void*)src, STD_MIN(buf->bufEnd - buf->bufCur, writeLen));
+         memmove((void*)buf->bufCur, (void*)src, STD_MIN(buf->bufEnd - buf->bufCur, (uintptr_t)writeLen));
       }
    }
    sbuf_advance(buf, srcLen);

@@ -55,8 +55,10 @@ __QAIC_IMPL(apps_remotectl_open)(const char *name, int *handle, char *dlStr,
   int domain = get_current_domain();
   int nErr = AEE_SUCCESS;
   remote_handle64 local;
+  remote_handle opened_handle;
   VERIFY(AEE_SUCCESS ==
-         (nErr = mod_table_open(name, handle, dlStr, dlerrorLen, dlErr)));
+         (nErr = mod_table_open(name, &opened_handle, dlStr, dlerrorLen, dlErr)));
+  *handle = (int)opened_handle;
   VERIFY(AEE_SUCCESS ==
          (nErr = fastrpc_update_module_list(
               REVERSE_HANDLE_LIST_PREPEND, domain, (remote_handle)*handle, &local, NULL)));
@@ -98,7 +100,7 @@ static __inline void *rpcmem_realloc(int heapid, uint32_t flags, void *buf,
                                      int oldsize, size_t size) {
   void *bufnew = rpcmem_alloc_internal(heapid, flags, size);
   if (buf && bufnew) {
-    memmove(bufnew, buf, STD_MIN(oldsize, size));
+    memmove(bufnew, buf, STD_MIN((size_t)(oldsize > 0 ? oldsize : 0), size));
     rpcmem_free_internal(buf);
     buf = NULL;
   }
@@ -164,7 +166,7 @@ static void listener(listener_config *me) {
         ctx = 0;
         result = -1;
         goto invoke;
-      } else if (nErr == (DSP_AEE_EOFFSET + AEE_EBADSTATE)) {
+      } else if ((uint32_t)nErr == (DSP_AEE_EOFFSET + AEE_EBADSTATE)) {
           /* UserPD in irrecoverable bad state. Exit listener */
           goto bail;
       }
@@ -347,8 +349,8 @@ static void *listener_start_thread(void *arg) {
   set_thread_context(domain);
   if ((adsp_listener1_handle = get_adsp_listener1_handle(domain)) != INVALID_HANDLE) {
     nErr = __QAIC_HEADER(adsp_listener1_init2)(adsp_listener1_handle);
-    if ((nErr == DSP_AEE_EOFFSET + AEE_ERPC) ||
-        nErr == DSP_AEE_EOFFSET + AEE_ENOSUCHMOD) {
+    if (((uint32_t)nErr == DSP_AEE_EOFFSET + AEE_ERPC) ||
+        (uint32_t)nErr == DSP_AEE_EOFFSET + AEE_ENOSUCHMOD) {
       FARF(ERROR, "Error 0x%x: %s domains support not available in listener",
            nErr, __func__);
       fastrpc_update_module_list(DOMAIN_LIST_DEQUEUE, domain, _const_adsp_listener1_handle, NULL, NULL);

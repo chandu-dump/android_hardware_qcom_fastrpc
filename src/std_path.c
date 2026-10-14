@@ -11,7 +11,9 @@ FILE:         std_path.c
 */
 
 /* To get memrchr on GNU/Linux */
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include "AEEstd.h"
 #include "AEEBufBound.h"
 #include <string.h>

@@ -7,7 +7,9 @@
 //#ifndef VERIFY_PRINT_INFO
 //#define VERIFY_PRINT_INFO
 //#endif // VERIFY_PRINT_INFO
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #ifndef VERIFY_PRINT_WARN
 #define VERIFY_PRINT_WARN
 #endif // VERIFY_PRINT_WARN
@@ -741,7 +743,7 @@ static int get_domain_from_domain_name(const char *domain_name,
                                        int domain_name_len) {
   int domain = INVALID_DOMAIN_ID;
 
-  if (domain_name_len < strlen(SUBSYSTEM_NAME[ADSP_DOMAIN_ID])) {
+  if (domain_name_len < 0 || (size_t)domain_name_len < strlen(SUBSYSTEM_NAME[ADSP_DOMAIN_ID])) {
     FARF(ERROR, "ERROR: %s Invalid domain name length: %u\n", __func__,
          domain_name_len);
     goto bail;
@@ -1618,8 +1620,8 @@ int remote_handle_open_domain(int domain, const char *name, remote_handle *ph,
   int name_len = 0;
   remote_handle64 handle = INVALID_HANDLE;
 
-  FASTRPC_ATRACE_BEGIN_L("%s called with domain %d, name %s, handle 0x%x",
-                         __func__, domain, name, ph);
+  FASTRPC_ATRACE_BEGIN_L("%s called with domain %d, name %s, handle %p",
+                         __func__, domain, name, (void *)ph);
   /* If the total reference count exceeds one then exit the application. */
   if (total_dsp_lib_refcnt > MAX_LIB_INSTANCE_ALLOWED) {
     FARF(ERROR,
@@ -2937,7 +2939,7 @@ int remote_session_control(uint32_t req, void *data, uint32_t datalen) {
     ret_val = snprintf(0, 0, "%s%s%s%s%d", rpc_uri->module_uri,
                        FASTRPC_DOMAIN_URI, SUBSYSTEM_NAME[domain],
                        FASTRPC_SESSION_URI, rpc_uri->session_id);
-    if (rpc_uri->uri_len <= ret_val) {
+    if (ret_val < 0 || rpc_uri->uri_len <= (uint32_t)ret_val) {
       nErr = AEE_EBADSIZE;
       FARF(ERROR,
            "ERROR 0x%x: %s Session URI length %u is not enough, need %u "
@@ -3152,7 +3154,7 @@ static void domain_deinit(int domain) {
   FARF(RUNTIME_RPC_HIGH, "%s for domain %d: dev %d", __func__, domain, olddev);
   if (olddev != -1) {
 
-    FASTRPC_ATRACE_BEGIN_L("%s called for handle 0x%x, domain %d, dev %d",
+    FASTRPC_ATRACE_BEGIN_L("%s called for handle 0x%" PRIx64 ", domain %d, dev %d",
                            __func__, handle, domain, olddev);
 
     handle = get_adsp_current_process1_handle(domain);
@@ -3500,7 +3502,7 @@ static int fastrpc_enable_kernel_optimizations(int domain) {
 
   nErr = ioctl_optimization(dev, max_concurrency);
   // TODO:Bharath
-  if ((nErr == -1 || nErr == (DSP_AEE_EOFFSET + AEE_ERPC)) &&
+  if ((nErr == -1 || (uint32_t)nErr == (DSP_AEE_EOFFSET + AEE_ERPC)) &&
       (errno == ENOTTY || errno == EINVAL || errno == EBADRQC)) {
     /*
      * Kernel optimizations not supported. Ignore IOCTL failure

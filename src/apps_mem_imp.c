@@ -130,7 +130,7 @@ __QAIC_IMPL(apps_mem_request_map64)(int heapid, uint32_t lflags, uint32_t rflags
          (nErr = get_unsigned_pd_attribute(domain, &unsigned_module)));
   FASTRPC_ATRACE_BEGIN_L("%s called with rflag 0x%x, lflags 0x%x, len 0x%llx, "
                          "heapid %d and unsigned PD %d",
-                         __func__, rflags, lflags, len, heapid,
+                         __func__, rflags, lflags, (unsigned long long)len, heapid,
                          unsigned_module);
   if (unsigned_module) {
     ualloc_support = is_userspace_allocation_supported();
@@ -205,7 +205,7 @@ bail:
     }
     VERIFY_EPRINTF("Error 0x%x: apps_mem_request_mmap64 failed for fd 0x%x of "
                    "size %lld (lflags 0x%x, rflags 0x%x)\n",
-                   nErr, fd, len, lflags, rflags);
+                   nErr, fd, (long long)len, lflags, rflags);
   }
   FASTRPC_ATRACE_END();
   return nErr;
@@ -237,7 +237,7 @@ __QAIC_IMPL(apps_mem_request_unmap64)(uint64_t vadsp,
   apps_mem_info *me = NULL;
 
   FASTRPC_ATRACE_BEGIN_L("%s called with vadsp 0x%llx, len 0x%llx", __func__,
-                         vadsp, len);
+                         (unsigned long long)vadsp, (unsigned long long)len);
   GET_HASH_NODE(apps_mem_info, domain, me);
   VERIFYC(me, AEE_ERESOURCENOTFOUND);
 
@@ -285,7 +285,7 @@ bail:
   if (nErr != AEE_SUCCESS) {
     VERIFY_EPRINTF("Error 0x%x: apps_mem_request_unmap64 failed for size %lld "
                    "(vadsp 0x%llx)\n",
-                   nErr, len, vadsp);
+                   nErr, (long long)len, (unsigned long long)vadsp);
   }
   FASTRPC_ATRACE_END();
   return nErr;
@@ -354,7 +354,7 @@ __QAIC_IMPL_EXPORT int __QAIC_IMPL(apps_mem_share_unmap)(uint64_t vadsp, int siz
   if (nErr != AEE_SUCCESS) {
     VERIFY_EPRINTF(
         "Error 0x%x: apps_mem_share_unmap failed size %d (vadsp 0x%llx)\n",
-        nErr, size, vadsp);
+        nErr, size, (unsigned long long)vadsp);
   }
   return nErr;
 }

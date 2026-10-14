@@ -4,7 +4,8 @@
 #ifndef FASTRPC_TRACE_H
 #define FASTRPC_TRACE_H
 
-#if ((defined _ANDROID) || (defined ANDROID)) || (defined DISABLE_ATRACE) && !defined(LE_ENABLE)
+#if (defined(__ANDROID__) || defined(_ANDROID) || defined(ANDROID)) && \
+    !defined(DISABLE_ATRACE) && !defined(LE_ENABLE)
 #include "cutils/trace.h" //for systrace support
 #endif
 #include "HAP_farf.h"
