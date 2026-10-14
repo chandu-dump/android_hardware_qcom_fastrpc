@@ -292,6 +292,7 @@ sh_binary {
     src: "src/init.cdsprpcd.softsku.sh",
     vendor: true,
     filename: "init.cdsprpcd.softsku.sh",
+    init_rc: ["src/vendor.qti.cdsprpc-softsku-service.rc"],
 }
 // Private client bindings; symbols remain hidden by the FastRPC export map.
 aidl_interface {

@@ -30,14 +30,6 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. 
 # SPDX-License-Identifier: BSD-3-Clause-Clear
 
-# SoftSKU check service for Shikra - disables cdsprpcd for FP1 license
-service vendor.cdsprpcd-softsku-sh /vendor/bin/init.cdsprpcd.softsku.sh
-    class late_start
-    user root
-    group system
-    oneshot
-    seclabel u:r:vendor_qti_init_shell:s0
-
 service vendor.cdsprpcd /vendor/bin/cdsprpcd rootpd cdsp
    class main
    user system
