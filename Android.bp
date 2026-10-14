@@ -29,9 +29,11 @@ filegroup {
         "src/fastrpc_cap.c",
         "src/fastrpc_config.c",
         "src/fastrpc_context.c",
+        "src/fastrpc_domains.c",
         "src/fastrpc_ioctl.c",
         "src/fastrpc_log.c",
         "src/fastrpc_mem.c",
+        "src/fastrpc_memory_request.c",
         "src/fastrpc_notif.c",
         "src/fastrpc_perf.c",
         "src/fastrpc_pm.c",
@@ -103,8 +105,26 @@ filegroup {
 //----------------------------------------------------------
 // Common defaults (cflags, includes, linkage)
 //----------------------------------------------------------
+soong_config_module_type {
+    name: "fastrpc_backend_defaults",
+    module_type: "cc_defaults",
+    config_namespace: "fastrpc",
+    bool_variables: ["multimode"],
+    properties: ["cflags"],
+}
+
+fastrpc_backend_defaults {
+    name: "fastrpc_selected_backend",
+    soong_config_variables: {
+        multimode: {
+            cflags: ["-DFASTRPC_USE_MULTIMODE"],
+        },
+    },
+}
+
 cc_defaults {
     name: "fastrpc_common_defaults",
+    defaults: ["fastrpc_selected_backend"],
     local_include_dirs: ["inc"],
     header_libs: ["adsprpc_inc_headers"],
 

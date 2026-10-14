@@ -33,6 +33,8 @@
       rpcmem_deinit;
       rpcmem_alloc;
       rpcmem_alloc2;
+    remote_system_request;
+    fastrpc_mem_request;
       rpcmem_free;
       rpcmem_to_fd;
       remote_handle_invoke_async;

@@ -1,6 +1,7 @@
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 // SPDX-License-Identifier: BSD-3-Clause-Clear 
 
+#include "fastrpc_domains.h"
 #ifndef VERIFY_PRINT_ERROR
 #define VERIFY_PRINT_ERROR
 #endif /* VERIFY_PRINT_ERROR */
@@ -191,8 +192,8 @@ static int fastrpc_notify_status(int domain, int session, int status) {
   if (!QList_IsEmpty(&notif_list.ql)) {
     QLIST_NEXTSAFE_FOR_ALL(&notif_list.ql, pn, pnn) {
       lnotif = STD_RECOVER_REC(struct fastrpc_notif, qn, pn);
-      if (lnotif && (lnotif->notif.domain == domain)) {
-        lnotif->notif.notifier_fn(lnotif->notif.context, domain, session,
+      if (lnotif && (fastrpc_domain_to_slot(lnotif->notif.domain) == domain)) {
+        lnotif->notif.notifier_fn(lnotif->notif.context, lnotif->notif.domain, session,
                                   status);
       }
     }

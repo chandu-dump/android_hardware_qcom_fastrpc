@@ -1,6 +1,7 @@
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 // SPDX-License-Identifier: BSD-3-Clause-Clear 
 
+#include "fastrpc_domains.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,6 +91,7 @@ bail :
 }
 
 int fastrpc_get_cap(uint32_t domain, uint32_t attributeID, uint32_t *capability) {
+   domain = fastrpc_domain_to_slot(domain);
    int nErr = AEE_SUCCESS, dev = -1, dom = GET_DOMAIN_FROM_EFFEC_DOMAIN_ID(domain);
 
    VERIFYC(IS_VALID_EFFECTIVE_DOMAIN_ID(domain), AEE_EBADPARM);
@@ -99,6 +101,10 @@ int fastrpc_get_cap(uint32_t domain, uint32_t attributeID, uint32_t *capability)
    *capability = 0;
 
    if (attributeID == DOMAIN_SUPPORT) {
+#ifdef FASTRPC_USE_MULTIMODE
+      *capability = fastrpc_slot_to_domain(dom) >= 0;
+      goto bail;
+#endif
       *capability = fastrpc_check_if_dsp_present_pil(dom);
       if (*capability == 0) {
         *capability = fastrpc_check_if_dsp_present_rproc(dom);

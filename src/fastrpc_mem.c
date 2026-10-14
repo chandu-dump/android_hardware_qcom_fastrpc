@@ -1,6 +1,8 @@
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 // SPDX-License-Identifier: BSD-3-Clause-Clear 
 
+#include "fastrpc_domains.h"
+#include "fastrpc_memory_request.h"
 
 //#ifndef VERIFY_PRINT_ERROR
 //#define VERIFY_PRINT_ERROR
@@ -440,8 +442,9 @@ int fdlist_fd_from_buf(void *buf, int bufLen, int *nova, void **base, int *attr,
   return 0;
 }
 
-int fastrpc_mmap(int domain, int fd, void *vaddr, int offset, size_t length,
-                 enum fastrpc_map_flags flags) {
+int fastrpc_mmap_with_attrs(int domain, int fd, void *vaddr, int offset, size_t length,
+                 enum fastrpc_map_flags flags, uint32_t requested_attrs, int initialize) {
+  domain = fastrpc_domain_to_slot(domain);
   struct fastrpc_map map = {0};
   int nErr = 0, dev = -1, iocErr = 0, attrs = 0, ref = 0;
   uint64_t vaddrout = 0;
@@ -463,9 +466,16 @@ int fastrpc_mmap(int domain, int fd, void *vaddr, int offset, size_t length,
   attrs = flags & (~FASTRPC_MAP_FLAGS_MASK);
   flags = flags & FASTRPC_MAP_FLAGS_MASK;
   VERIFYC(fd >= 0 && offset == 0 && attrs == 0, AEE_EBADPARM);
-  VERIFYC(flags >= 0 && flags < FASTRPC_MAP_MAX &&
-              flags != FASTRPC_MAP_RESERVED,
+#ifdef FASTRPC_USE_MULTIMODE
+  VERIFYC(flags >= 0 && flags <= 18 && flags != FASTRPC_MAP_RESERVED,
           AEE_EBADPARM);
+  VERIFYC(!(requested_attrs & ~(1U | 256U | 1024U)), AEE_EBADPARM);
+  attrs = requested_attrs;
+#else
+  VERIFYC(flags >= 0 && flags < FASTRPC_MAP_MAX &&
+              flags != FASTRPC_MAP_RESERVED && !requested_attrs,
+          AEE_EBADPARM);
+#endif
 
   // Get domain and open session if not already open
   if (domain == -1) {
@@ -473,7 +483,15 @@ int fastrpc_mmap(int domain, int fd, void *vaddr, int offset, size_t length,
   }
   VERIFYC(IS_VALID_EFFECTIVE_DOMAIN_ID(domain), AEE_EBADPARM);
   FASTRPC_GET_REF(domain);
+#ifdef FASTRPC_USE_MULTIMODE
+  nErr = fastrpc_session_dev(domain, &dev);
+  if (initialize && nErr == AEE_ENOTINITIALIZED)
+    nErr = fastrpc_session_init(domain, &dev);
+  VERIFY(AEE_SUCCESS == nErr);
+#else
+  (void)initialize;
   VERIFY(AEE_SUCCESS == (nErr = fastrpc_session_dev(domain, &dev)));
+#endif
   VERIFYC(-1 != dev, AEE_ERPC);
 
   /* Search for mapping in current session static map list */
@@ -540,7 +558,8 @@ bail:
   return nErr;
 }
 
-int fastrpc_munmap(int domain, int fd, void *vaddr, size_t length) {
+int fastrpc_munmap_with_attrs(int domain, int fd, void *vaddr, size_t length, uint32_t requested_attrs) {
+  domain = fastrpc_domain_to_slot(domain);
   int nErr = 0, dev = -1, iocErr = 0, locked = 0, ref = 0;
   struct static_map *mNode = NULL;
   QNode *pn, *pnn;
@@ -554,6 +573,11 @@ int fastrpc_munmap(int domain, int fd, void *vaddr, size_t length) {
   }
   VERIFYC(fd >= 0 && IS_VALID_EFFECTIVE_DOMAIN_ID(domain),
           AEE_EBADPARM);
+#ifdef FASTRPC_USE_MULTIMODE
+  VERIFYC(!(requested_attrs & ~(1U | 256U | 1024U)), AEE_EBADPARM);
+#else
+  VERIFYC(!requested_attrs, AEE_EBADPARM);
+#endif
   FASTRPC_GET_REF(domain);
   VERIFY(AEE_SUCCESS == (nErr = fastrpc_session_dev(domain, &dev)));
   /**
@@ -582,7 +606,7 @@ int fastrpc_munmap(int domain, int fd, void *vaddr, size_t length) {
   locked = 0;
   pthread_mutex_unlock(&smaplst[domain].mut);
 
-  iocErr = ioctl_munmap(dev, MEM_UNMAP, 0, 0, fd, mNode->map.length,
+  iocErr = ioctl_munmap(dev, MEM_UNMAP, requested_attrs, 0, fd, mNode->map.length,
                         mNode->map.vaddrout);
   pthread_mutex_lock(&smaplst[domain].mut);
   locked = 1;
@@ -614,8 +638,17 @@ bail:
   return nErr;
 }
 
+int fastrpc_mmap(int domain, int fd, void *vaddr, int offset, size_t length,
+                 enum fastrpc_map_flags flags) {
+  return fastrpc_mmap_with_attrs(domain, fd, vaddr, offset, length, flags, 0, 0);
+}
+int fastrpc_munmap(int domain, int fd, void *vaddr, size_t length) {
+  return fastrpc_munmap_with_attrs(domain, fd, vaddr, length, 0);
+}
+
 int remote_mem_map(int domain, int fd, int flags, uint64_t vaddr, size_t size,
                    uint64_t *raddr) {
+  domain = fastrpc_domain_to_slot(domain);
   int nErr = 0;
   int dev = -1, ref = 0;
   uint64_t vaddrout = 0;
@@ -655,6 +688,7 @@ bail:
 }
 
 int remote_mem_unmap(int domain, uint64_t raddr, size_t size) {
+  domain = fastrpc_domain_to_slot(domain);
   int nErr = 0, dev = -1, ref = 0;
 
   VERIFY(AEE_SUCCESS == (nErr = fastrpc_init_once()));

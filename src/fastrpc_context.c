@@ -11,6 +11,8 @@
 #define FARF_HIGH 0
 #define FARF_MEDIUM 0
 
+#include "fastrpc_domains.h"
+#include "fastrpc_memory_request.h"
 #include <stdlib.h>
 #include <AEEstd.h>
 #include <AEEStdErr.h>
@@ -70,7 +72,7 @@ static int fastrpc_context_init_domains(fastrpc_context_create *create,
 	bool multisess = true, multidom = true;
 
 	for (i = 0; i < num_domain_ids; i++) {
-		effec_domain_id = create->effec_domain_ids[i];
+		effec_domain_id = fastrpc_domain_to_slot(create->effec_domain_ids[i]);
 		VERIFYC(IS_VALID_EFFECTIVE_DOMAIN_ID(effec_domain_id),
 					AEE_EBADDOMAIN);
 
@@ -132,10 +134,10 @@ static int fastrpc_context_deinit(fastrpc_context *ctx) {
 		domain = ctx->effec_domain_ids[i];
 
 		// If no session was opened on domain, continue
-		if (!ctx->devs[i])
+		if (ctx->devs[i] < 0)
 			continue;
 
-		fastrpc_session_close(domain, INVALID_DEVICE);
+		fastrpc_session_put(domain);
 	}
 	free(ctx->devs);
 
@@ -175,6 +177,8 @@ static fastrpc_context *fastrpc_context_init(unsigned int num_domain_ids) {
 	VERIFYC(NULL != (ctx->devs = (int *)calloc(num_domain_ids,
 		sizeof(*ctx->devs))), AEE_ENOMEMORY);
 
+	for (unsigned int i = 0; i < num_domain_ids; ++i)
+		ctx->devs[i] = -1;
 	ctx->num_domain_ids = num_domain_ids;
 bail:
 	if (nErr) {
@@ -196,7 +200,6 @@ int fastrpc_destroy_context(uint64_t ctxid) {
 
 	VERIFYC(NULL != (ctx = fastrpc_context_validate(ctxid)),
 			AEE_EBADCONTEXT);
-	fastrpc_context_remove_from_table(ctx);
 
 	/*
 	 * Deregister context id from kernel. The device fd for ioctl can
@@ -208,6 +211,7 @@ int fastrpc_destroy_context(uint64_t ctxid) {
 	VERIFY(AEE_SUCCESS == (nErr = ioctl_mdctx_manage(dev,
 			FASTRPC_MDCTX_REMOVE, NULL, NULL, 0, &ctx->ctxid)));
 
+	fastrpc_context_remove_from_table(ctx);
 	VERIFY(AEE_SUCCESS == (nErr = fastrpc_context_deinit(ctx)));
 	FARF(ALWAYS, "%s done for context 0x%"PRIx64"", __func__, ctxid);
 bail:
@@ -242,8 +246,11 @@ int fastrpc_create_context(fastrpc_context_create *create) {
 		effec_domain_id = ctx->effec_domain_ids[i];
 
 		// Create session on domain if not already created
-		VERIFY(AEE_SUCCESS == (nErr = fastrpc_session_open(effec_domain_id,
-			&ctx->devs[i])));
+		int session_fd = -1;
+		VERIFY(AEE_SUCCESS == (nErr = fastrpc_session_init(effec_domain_id,
+			&session_fd)));
+		VERIFY(AEE_SUCCESS == (nErr = fastrpc_session_get(effec_domain_id)));
+		ctx->devs[i] = session_fd;
 	}
 
 	/*
@@ -254,7 +261,7 @@ int fastrpc_create_context(fastrpc_context_create *create) {
 	VERIFYC(-1 != (dev = get_device_fd(ctx->effec_domain_ids[0])),
 			AEE_EINVALIDDEVICE);
 	VERIFY(AEE_SUCCESS == (nErr = ioctl_mdctx_manage(dev,
-			FASTRPC_MDCTX_SETUP, ctx, ctx->domains,
+			FASTRPC_MDCTX_SETUP, ctx, ctx->effec_domain_ids,
 			num_domain_ids, &ctx->ctxid)));
 
 	fastrpc_context_add_to_table(ctx);
