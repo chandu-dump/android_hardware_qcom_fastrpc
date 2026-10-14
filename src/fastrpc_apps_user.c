@@ -84,14 +84,9 @@
 char DSP_LIBS_LOCATION[PATH_MAX] = DEFAULT_DSP_SEARCH_PATHS;
 
 #ifdef LE_ENABLE
-#define PROPERTY_VALUE_MAX                                                     \
-  92 // as this macro is defined in cutils for Android platforms, defined
-     // explicitly for LE platform
-#elif (defined _ANDROID) || (defined ANDROID)
-/// TODO: Bharath #include "cutils/properties.h"
 #define PROPERTY_VALUE_MAX 92
 #else
-#define PROPERTY_VALUE_MAX 92
+#include <cutils/properties.h>
 #endif
 
 #ifndef _WIN32
@@ -481,12 +476,9 @@ static uint32_t crc32_lut(unsigned char *data, int nbyte, uint32_t *crctab) {
   return crc;
 }
 
-int property_get_int32(const char *name, int value) { return 0; }
-
-int property_get(const char *name, int *def, int *value) { return 0; }
 
 int fastrpc_get_property_int(fastrpc_properties UserPropKey, int defValue) {
-  if (((int)UserPropKey > NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(ERROR,
          "%s: Index %d out-of-bound for ENV_DEBUG_VAR_NAME array of len %d",
          __func__, UserPropKey, NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS);
@@ -497,7 +489,7 @@ int fastrpc_get_property_int(fastrpc_properties UserPropKey, int defValue) {
     return (int)atoi(env);
 #if !defined(LE_ENABLE) // Android platform
 #if !defined(SYSTEM_RPC_LIBRARY) // vendor library
-  if (((int)UserPropKey > NO_ANDROIDP_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ANDROIDP_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(
         ERROR,
         "%s: Index %d out-of-bound for ANDROIDP_DEBUG_VAR_NAME array of len %d",
@@ -507,7 +499,7 @@ int fastrpc_get_property_int(fastrpc_properties UserPropKey, int defValue) {
   return (int)property_get_int32(ANDROIDP_DEBUG_VAR_NAME[UserPropKey],
                                  defValue);
 #else // system library
-  if (((int)UserPropKey > NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(ERROR,
          "%s: Index %d out-of-bound for ANDROID_DEBUG_VAR_NAME array of len %d",
          __func__, UserPropKey, NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS);
@@ -522,7 +514,7 @@ int fastrpc_get_property_int(fastrpc_properties UserPropKey, int defValue) {
 int fastrpc_get_property_string(fastrpc_properties UserPropKey, char *value,
                                 char *defValue) {
   int len = 0;
-  if (((int)UserPropKey > NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(ERROR,
          "%s: Index %d out-of-bound for ENV_DEBUG_VAR_NAME array of len %d",
          __func__, UserPropKey, NO_ENV_DEBUG_VAR_NAME_ARRAY_ELEMENTS);
@@ -535,17 +527,17 @@ int fastrpc_get_property_string(fastrpc_properties UserPropKey, char *value,
   }
 #if !defined(LE_ENABLE) // Android platform
 #if !defined(SYSTEM_RPC_LIBRARY) // vendor library
-  if (((int)UserPropKey > NO_ANDROIDP_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ANDROIDP_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(
         ERROR,
         "%s: Index %d out-of-bound for ANDROIDP_DEBUG_VAR_NAME array of len %d",
         __func__, UserPropKey, NO_ANDROIDP_DEBUG_VAR_NAME_ARRAY_ELEMENTS);
     return len;
   }
-  return property_get(ANDROIDP_DEBUG_VAR_NAME[UserPropKey], (int *)value,
-                      (int *)defValue);
+  return property_get(ANDROIDP_DEBUG_VAR_NAME[UserPropKey], value,
+                      defValue);
 #else // system library
-  if (((int)UserPropKey > NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
+  if ((int)UserPropKey < 0 || ((int)UserPropKey >= NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS)) {
     FARF(ERROR,
          "%s: Index %d out-of-bound for ANDROID_DEBUG_VAR_NAME array of len %d",
          __func__, UserPropKey, NO_ANDROID_DEBUG_VAR_NAME_ARRAY_ELEMENTS);
@@ -4126,7 +4118,6 @@ static int fastrpc_apps_user_init(void) {
 #endif
   fastrpc_mem_init();
   fastrpc_context_table_init();
-  fastrpc_log_init();
   fastrpc_config_init();
   pthread_mutex_init(&update_notif_list_mut, 0);
   VERIFYC(NULL != (hlist = calloc(NUM_DOMAINS_EXTEND, sizeof(*hlist))),
@@ -4187,6 +4178,11 @@ bail:
     FARF(ERROR, "Error %x: fastrpc init once failed\n", nErr);
   }
   return nErr == AEE_SUCCESS ? _pl_fastrpc_apps_user()->nErr : nErr;
+}
+
+static void __CONSTRUCTOR_ATTRIBUTE__ fastrpc_init_logging(void) {
+  if (fastrpc_init_once() == AEE_SUCCESS)
+    fastrpc_log_init();
 }
 
 static int rpcmem_init_me(void) {

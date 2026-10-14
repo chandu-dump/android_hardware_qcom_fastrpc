@@ -1,7 +1,9 @@
 // Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 // SPDX-License-Identifier: BSD-3-Clause-Clear 
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -19,7 +21,11 @@
 #include "rpcmem_internal.h"
 #include "verify.h"
 
-#define PROPERTY_VALUE_MAX 72
+#ifdef LE_ENABLE
+#define PROPERTY_VALUE_MAX 92
+#else
+#include <cutils/properties.h>
+#endif
 /* Create persist buffer of size 1 MB */
 #define DEBUG_BUF_SIZE 1024 * 1024
 
@@ -44,7 +50,7 @@ typedef struct persist_buffer {
   pthread_mutex_t mut;
 } persist_buffer;
 
-static persist_buffer persist_buf;
+static persist_buffer persist_buf = {.mut = PTHREAD_MUTEX_INITIALIZER};
 static uint32_t fastrpc_logmask;
 static FILE *log_userspace_file_fd; // file descriptor to save userspace runtime
                                     // farf logs
@@ -106,10 +112,12 @@ static unsigned long long GetTime(void) {
   struct timeval tv;
   struct timezone tz;
 
-  gettimeofday(&tv, &tz);
+  if (gettimeofday(&tv, &tz) != 0 || tv.tv_sec < 0 || tv.tv_usec < 0) {
+    return 0;
+  }
 
   /* Integer overflow check. */
-  if (tv.tv_sec > (ULLONG_MAX - tv.tv_usec) / 1000000ULL) {
+  if ((unsigned long long)tv.tv_sec > (ULLONG_MAX - tv.tv_usec) / 1000000ULL) {
     return 0;
   }
   return tv.tv_sec * 1000000ULL + tv.tv_usec;
@@ -119,6 +127,8 @@ static unsigned long long GetTime(void) {
 static void print_dbgbuf_data(char *data, int size) {
   int len = 0;
 
+  if (!data || size <= 0)
+    return;
   pthread_mutex_lock(&persist_buf.mut);
   if (persist_buf.buf) {
     if (((persist_buf.size + PREPEND_DBGBUF_FARF_SIZE + size) >
@@ -128,7 +138,10 @@ static void print_dbgbuf_data(char *data, int size) {
     len = snprintf(persist_buf.buf + persist_buf.size,
                    DEBUG_BUF_SIZE - persist_buf.size, "%llu:%d:%d:dom:%d: %s\n",
                    GetTime(), getpid(), gettid(), get_current_domain(), data);
-    persist_buf.size += (len + 1);
+    if (len >= 0 && (unsigned int)len < DEBUG_BUF_SIZE - persist_buf.size)
+      persist_buf.size += len + 1;
+    else
+      persist_buf.size = strlen(DEBUF_BUF_TRACE) + 1;
   }
   pthread_mutex_unlock(&persist_buf.mut);
 }
@@ -282,10 +295,8 @@ void fastrpc_log_init() {
   bool debug_build_type = false;
   int nErr = AEE_SUCCESS, fd = -1;
   char build_type[PROPERTY_VALUE_MAX];
-  char *logfilename;
+  char *logfilename, *buffer = NULL;
 
-  pthread_mutex_init(&persist_buf.mut, 0);
-  pthread_mutex_lock(&persist_buf.mut);
   /*
    * Get build type by reading the target properties,
    * if buuid type is eng or userdebug allocate 1 MB persist buf.
@@ -302,24 +313,26 @@ void fastrpc_log_init() {
   }
   if (persist_buf.buf == NULL && debug_build_type) {
     /* Create a debug buffer to append DEBUG FARF level message. */
-    persist_buf.buf = (char *)rpcmem_alloc_internal(
+    buffer = (char *)rpcmem_alloc_internal(
         RPCMEM_HEAP_ID_SYSTEM, RPCMEM_DEFAULT_FLAGS | RPCMEM_TRY_MAP_STATIC,
         DEBUG_BUF_SIZE * sizeof(char));
-    if (persist_buf.buf) {
-      fd = rpcmem_to_fd(persist_buf.buf);
+    if (buffer) {
+      fd = rpcmem_to_fd(buffer);
       FARF(RUNTIME_RPC_HIGH, "%s: persist_buf.buf created %d size %d", __func__,
            fd, DEBUG_BUF_SIZE);
       /* Appending header to persist buffer, to identify the start address
        * through script. */
-      strlcpy(persist_buf.buf, DEBUF_BUF_TRACE, DEBUG_BUF_SIZE);
+      strlcpy(buffer, DEBUF_BUF_TRACE, DEBUG_BUF_SIZE);
+      pthread_mutex_lock(&persist_buf.mut);
+      persist_buf.buf = buffer;
       persist_buf.size = strlen(DEBUF_BUF_TRACE) + 1;
+      pthread_mutex_unlock(&persist_buf.mut);
     } else {
       nErr = AEE_ENORPCMEMORY;
       FARF(ERROR, "Error 0x%x: %s allocation failed for persist_buf of size %d",
            nErr, __func__, DEBUG_BUF_SIZE);
     }
   }
-  pthread_mutex_unlock(&persist_buf.mut);
   logfilename = fastrpc_config_get_userspace_runtime_farf_file();
   if (logfilename) {
     log_userspace_file_fd = fopen(logfilename, "w");
@@ -334,13 +347,14 @@ void fastrpc_log_init() {
 }
 
 void fastrpc_log_deinit() {
+  char *buffer;
 
   pthread_mutex_lock(&persist_buf.mut);
-  if (persist_buf.buf) {
-    rpcmem_free(persist_buf.buf);
-    persist_buf.buf = NULL;
-  }
+  buffer = persist_buf.buf;
+  persist_buf.buf = NULL;
   pthread_mutex_unlock(&persist_buf.mut);
+  if (buffer)
+    rpcmem_free(buffer);
   if (log_userspace_file_fd) {
     fclose(log_userspace_file_fd);
     log_userspace_file_fd = NULL;
