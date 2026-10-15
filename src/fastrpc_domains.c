@@ -89,7 +89,8 @@ static int load_domains(struct domain_entry *entries, size_t *count, int refresh
   pthread_mutex_lock(&domains_lock);
   if (!cache_valid || refresh) {
     rc = read_domains(cached_domains, &cached_count);
-    cache_valid = !rc;
+    /* An empty sysfs directory during boot is not a complete discovery. */
+    cache_valid = !rc && cached_count != 0;
   }
   if (!rc) {
     *count = cached_count;
@@ -143,11 +144,14 @@ int fastrpc_domain_to_slot(int domain) {
 int fastrpc_name_to_slot(const char *name, size_t length) {
   if (!name || !length || length >= 32) return -2;
   struct domain_entry entries[DOMAIN_LIMIT]; size_t count;
-  if (load_domains(entries, &count, 0)) return -2;
-  for (size_t i = 0; i < count; ++i)
-    if ((strlen(entries[i].info.name) == length && !memcmp(name, entries[i].info.name, length)) ||
-        (strlen(entries[i].legacy_name) == length && !memcmp(name, entries[i].legacy_name, length)))
-      return entries[i].legacy_id;
+  /* A DSP may register after our first successful discovery. */
+  for (int refresh = 0; refresh <= 1; ++refresh) {
+    if (load_domains(entries, &count, refresh)) return -2;
+    for (size_t i = 0; i < count; ++i)
+      if ((strlen(entries[i].info.name) == length && !memcmp(name, entries[i].info.name, length)) ||
+          (strlen(entries[i].legacy_name) == length && !memcmp(name, entries[i].legacy_name, length)))
+        return entries[i].legacy_id;
+  }
   return -2;
 }
 int fastrpc_slot_to_domain(int slot) {
